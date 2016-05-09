@@ -11,6 +11,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"time"
 )
 
 var (
@@ -96,14 +97,56 @@ func pageGeneration(project string, arg string) error {
 		}
 		html := strings.TrimPrefix(htmlFiles[i], constructTemplatesPath(project, arg))
 		json := strings.TrimPrefix(jsonFile, constructTemplatesPath(project, arg))
+		out := filepath.Join(constructStaticEnglishPath(project, arg), html)
+		support := filepath.Join(constructTemplatesPath(project, arg), "support")
+
+		info, err := os.Stat(out)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "unable to stat %s: %v", out, err)
+			return err
+		}
+		criticalTime := info.ModTime()
+		rebuild := false
+		rebuild = rebuild || fileAfter(filepath.Join(constructTemplatesPath(project, arg), html), criticalTime)
+		rebuild = rebuild || fileAfter(filepath.Join(constructTemplatesPath(project, arg), json), criticalTime)
+		rebuild = rebuild || anyDirectoryContentAfter(support, criticalTime)
+		if !rebuild {
+			continue //no point in running pagegen
+		}
+		fmt.Printf("gb seven5: rebuilding %s\n", out)
 		if err := launchPagegen("support",
 			constructTemplatesPath(project, arg),
-			html, json,
-			filepath.Join(constructStaticEnglishPath(project, arg), html)); err != nil {
+			html, json, out); err != nil {
 			return err
 		}
 	}
 	return nil
+}
+
+func fileAfter(path string, crit time.Time) bool {
+	info, err := os.Stat(path)
+	if err != nil {
+		return true
+	}
+	return info.ModTime().After(crit)
+}
+
+func anyDirectoryContentAfter(path string, crit time.Time) bool {
+	result := false
+	err := filepath.Walk(path, func(p string, info os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+		if !result && info.ModTime().After(crit) {
+			result = true
+
+		}
+		return nil
+	})
+	if err != nil {
+		return true
+	}
+	return result
 }
 
 func gopherjsCompilation(project string, arg string) error {
@@ -135,6 +178,7 @@ func gopherjsCompilation(project string, arg string) error {
 				page, constructClientPackagePath(project, arg)))
 		}
 		suffix := strings.TrimPrefix(page, constructClientPackagePath(project, arg))
+		suffix = strings.TrimSuffix(suffix, ".go") + ".js" //output filename part
 		target := filepath.Join(constructStaticEnglishPath(project, arg), suffix)
 		if err := launchGopherjs(project, "build", "-m", "-o", target, page); err != nil {
 			return err
@@ -195,7 +239,6 @@ func launchGopherjs(projectDir string, args ...string) error {
 }
 
 func launchPagegen(supportPath, templatesPath, htmlInFile, jsonFile, htmlOutFile string) error {
-	fmt.Printf("XXXIES::: %s, %s, %s, %s\n", supportPath, templatesPath, htmlInFile, jsonFile)
 	cmd := exec.Command("pagegen", "--support", supportPath, "--dir", templatesPath, "--start",
 		htmlInFile, "--json", jsonFile)
 	out, err := cmd.Output()
