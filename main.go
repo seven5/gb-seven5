@@ -15,7 +15,7 @@ import (
 )
 
 var (
-	verbose = true
+	verbose = false
 )
 
 func main() {
@@ -85,6 +85,15 @@ func pageGeneration(project string, arg string) error {
 		}
 		return nil
 	})
+
+	if verbose {
+		for i, json := range jsonFiles {
+			jsonShort := strings.TrimPrefix(json, constructPagesPath(project, arg))
+			html := htmlFiles[i]
+			htmlShort := strings.TrimPrefix(html, constructPagesPath(project, arg))
+			fmt.Printf("%d %s %s\n", i, jsonShort, htmlShort)
+		}
+	}
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Unable to walk directory %s: %v", templatePath, err)
 		return err
@@ -100,12 +109,11 @@ func pageGeneration(project string, arg string) error {
 		out := filepath.Join(constructStaticEnglishPath(project, arg), html)
 		support := filepath.Join(constructTemplatesPath(project, arg), "support")
 
+		criticalTime := time.Time{}
 		info, err := os.Stat(out)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "unable to stat %s: %v", out, err)
-			return err
+		if err == nil {
+			criticalTime = info.ModTime()
 		}
-		criticalTime := info.ModTime()
 		rebuild := false
 		rebuild = rebuild || fileAfter(filepath.Join(constructTemplatesPath(project, arg), html), criticalTime)
 		rebuild = rebuild || fileAfter(filepath.Join(constructTemplatesPath(project, arg), json), criticalTime)
@@ -247,12 +255,12 @@ func launchPagegen(supportPath, templatesPath, htmlInFile, jsonFile, htmlOutFile
 			fmt.Fprintf(os.Stderr, "%s\n", string(execError.Stderr))
 			return execError
 		}
-		fmt.Fprintf(os.Stderr, "Unable to start pagegen process: %v", err)
+		fmt.Fprintf(os.Stderr, "Unable to start pagegen process: %v\n", err)
 		return err
 	}
 	file, err := os.Create(htmlOutFile)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "unable to create output file %s: %v", htmlOutFile, err)
+		fmt.Fprintf(os.Stderr, "unable to create output file %s: %v\n", htmlOutFile, err)
 		return err
 	}
 	buff := bytes.NewBuffer(out)
@@ -275,10 +283,10 @@ func constructPagesPath(project string, arg string) string {
 	return filepath.Join(project, "src", arg, "pages")
 }
 func constructTemplatesPath(project string, arg string) string {
-	return filepath.Join(project, "src", arg, "pages", "template")
+	return filepath.Join(project, "src", arg, "pages")
 }
 func constructSupportPath(project string, arg string) string {
-	return filepath.Join(project, "src", arg, "pages", "template", "support")
+	return filepath.Join(project, "src", arg, "pages", "support")
 }
 
 func constructStaticEnglishPath(project string, arg string) string {
